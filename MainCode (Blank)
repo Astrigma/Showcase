@@ -1,0 +1,248 @@
+-- Services --
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local WS = game:GetService("Workspace")
+
+-- Variables --
+local RoundInProgress = false  -- Indicates whether a round is currently in progress
+local MinPlayersReq = 1  -- Minimum number of players required to start the game
+local TimeBetweenEvents = 10  -- Time between random events in seconds
+local IntermissionTime = 15  -- Time for intermission (pause between rounds) in seconds
+local GameTime = 60  -- Total duration of a round in seconds
+local EndRoundTime = 10  -- Duration of the countdown at the end of a round in seconds
+local radius = 60  -- Radius for positioning the columns
+
+local PlayersInGame = {} -- List of players participating in the round (Do not change anything here)
+
+-- Functions --
+local function TypeWriter(label, text) -- Function for gradually writing text in a UI label
+	for i = 1, #text, 1 do
+		label.Text = string.sub(text, 1, i)
+		wait(0.05)
+	end
+end
+
+local function RandomEvent() -- Function for triggering random events during a round
+	local ColumsFolder = WS:WaitForChild("Colums")
+	
+	for i = ((GameTime/TimeBetweenEvents) - 1), 0, -1 do
+		local RndmNumber = math.random(1, 2)
+		
+		if RndmNumber == 1 then
+			for i, colum in pairs(ColumsFolder:GetChildren()) do
+				if colum.Name ~= "KillPart" then
+					colum.Material = Enum.Material.Ice
+					colum.Color = Color3.fromRGB(66, 246, 255)
+				end
+			end
+			wait(TimeBetweenEvents - 1.5)
+			
+			for i, colum in pairs(ColumsFolder:GetChildren()) do
+				if colum.Name ~= "KillPart" then
+					colum.Material = Enum.Material.Plaster
+					colum.Color = Color3.fromRGB(0, 0, 0)
+				end
+			end
+		elseif RndmNumber == 2 then
+			local OriginSize
+			
+			for i, colum in pairs(ColumsFolder:GetChildren()) do
+				if colum.Name ~= "KillPart" then
+					OriginSize = colum.Size
+
+					local RandomSize = Vector3.new(math.random(2, 5.5), colum.Size.Y, math.random(2, 5.5))
+					colum.Size = RandomSize
+				end
+			end
+			wait(TimeBetweenEvents - 1.5)
+			
+			for i, colum in pairs(ColumsFolder:GetChildren()) do
+				if colum.Name ~= "KillPart" then
+					colum.Size = OriginSize
+				end
+			end
+			
+		end
+	end
+end
+
+local function SpawnColumbs() -- Function for placing floating columns for players
+	local Games = RS:FindFirstChild("Games")
+	local Game1 = Games:FindFirstChild("Game1")
+	local centerPart = Game1:FindFirstChild("MiddlePart")
+	local Template = Game1:FindFirstChild("Templates")["Template"]
+	
+	local Folder = Instance.new("Folder", WS)
+	Folder.Name = "Colums"
+	
+	for _, player in pairs(Players:GetPlayers()) do
+		table.insert(PlayersInGame, player)
+	end
+	
+	local scaffoldAngle = 360 / #PlayersInGame
+
+	for i = 1, #PlayersInGame do
+		local angle = math.rad((i - 1) * scaffoldAngle)
+		local x = centerPart.Position.X + radius * math.cos(angle)
+		local z = centerPart.Position.Z + radius * math.sin(angle)
+		local position = Vector3.new(x, centerPart.Position.Y, z)
+
+		local scaffold = Template:Clone()
+		scaffold.Position = position
+		scaffold.Spawnpart.Position = Vector3.new(x, scaffold.Spawnpart.Position.Y, z)
+		scaffold.Parent = Folder
+	end
+end
+
+local function UpdateStatusLabel(text, typewriter) -- Function for updating the status label for all players
+	for _, player in pairs(Players:GetPlayers()) do
+		local PlayerUI = player:FindFirstChild("PlayerGui")
+		local HiddenDevUI = PlayerUI:WaitForChild("HiddenDev")
+		local Background = HiddenDevUI:WaitForChild("Background")
+		local Label = Background:WaitForChild("Label")
+
+		if not typewriter then
+			Label.Text = text
+		else
+			TypeWriter(Label, text)
+		end
+	end
+end
+
+local function EndRound(winners) -- Function for ending a round and displaying the winners or the message "No Winners"
+	local ColumsFolder = WS:FindFirstChild("Colums")
+	if ColumsFolder then
+		ColumsFolder:Destroy()
+	end
+	
+	if winners then
+		local Names = {}
+		for i = 1, #PlayersInGame do
+			Names[#Names + 1] = tostring(PlayersInGame[i])
+		end
+
+		UpdateStatusLabel(string.format("The winners are %s", table.concat(Names, ", ")), true)
+		
+		for i, player in pairs(PlayersInGame) do
+			player.leaderstats.Wins.Value += 1	
+			table.remove(PlayersInGame, table.find(PlayersInGame, player))
+		end
+		
+		wait(10)
+	else
+		UpdateStatusLabel("There are no winners this round!", true)
+		wait(10)
+	end
+	
+	RoundInProgress = false
+end
+
+local function StartRound() -- Function for starting a new round
+	local Restart = false
+	spawn(function()
+		for i = GameTime, 0, -1 do 
+			UpdateStatusLabel("Game ends in " .. i .. " seconds!", false)
+			
+			if Restart then
+				break
+			end
+			wait(1)
+		end
+		
+		for _, plr in pairs(PlayersInGame) do
+			local char = plr.Character
+			char.HumanoidRootPart.CFrame = WS.SpawnLocation.CFrame + Vector3.new(0, 2, 0)
+		end
+		
+		if not Restart then
+			EndRound(true)
+		end
+	end)
+	
+	spawn(function()
+		RandomEvent()
+	end)
+	
+	local KillPart = Instance.new("Part", WS:FindFirstChild("Colums"))
+	KillPart.Name = "KillPart"
+	KillPart.Color = Color3.fromRGB(255, 0, 4)
+	KillPart.Material = Enum.Material.Neon
+	KillPart.Size = Vector3.new(2, 2, radius*2.5)
+	KillPart.Anchored = true
+	KillPart.CanCollide = false
+	KillPart.CanTouch = true
+	KillPart.CFrame = (RS:FindFirstChild("Games")["Game1"]["MiddlePart"].Spawnpart.CFrame * CFrame.Angles(0, 0.1, 0)) + Vector3.new(0, KillPart.Size.Y - 1, 0)
+	KillPart.Parent = WS:FindFirstChild("Colums")
+	
+	--Spin Part
+	local SpinSpeed = 0.05
+	spawn(function()
+		while wait() do
+			KillPart.CFrame = KillPart.CFrame * CFrame.Angles(0, SpinSpeed ,0)
+		end
+	end)
+	
+	KillPart.Touched:Connect(function(hit)
+		local Debounce = false
+		if not Debounce then
+			Debounce = true
+			local plr = Players:GetPlayerFromCharacter(hit.Parent)
+			local char = hit.Parent
+			char["HumanoidRootPart"].CFrame = WS:FindFirstChild("SpawnLocation").CFrame + Vector3.new(0, 2, 0)
+
+			table.remove(PlayersInGame, table.find(PlayersInGame, plr))
+			if #PlayersInGame == 0 then
+				Restart = true
+				wait(1.1)
+				EndRound(false)
+				Restart = false
+			end
+			Debounce = false
+		end
+	end)
+end
+
+local function Main() -- Main function controlling the game flow
+	while wait() do
+		if not RoundInProgress then
+			if #Players:GetPlayers() >= MinPlayersReq then
+				for i = IntermissionTime, 0, -1 do -- Intermission/Countdown
+					UpdateStatusLabel("Game will start in " .. i .. " seconds!", false)
+					wait(1)
+				end
+				
+				RoundInProgress = true
+				
+				SpawnColumbs()
+					
+				for _, player in pairs(PlayersInGame) do
+					for y, colum in pairs(WS:FindFirstChild("Colums"):GetChildren()) do
+						if colum.Occupied.Value == false then
+							colum.Occupied.Value = true
+
+							local char = player.Character
+							local HRP = char:FindFirstChild("HumanoidRootPart")
+							HRP.CFrame = colum.Spawnpart.CFrame + Vector3.new(0, 5, 0)
+						end
+					end
+				end
+				
+				wait(1)
+				StartRound()
+			else
+				if (MinPlayersReq - #Players:GetPlayers()) > 1 then
+					UpdateStatusLabel("Waiting for " .. MinPlayersReq - #Players:GetPlayers() .. " more Players to start the Game!", true)
+					wait(1)
+				else
+					UpdateStatusLabel("Waiting for " .. MinPlayersReq - #Players:GetPlayers() .. " more Player to start the Game!", true)
+					wait(1)
+				end
+			end
+		end
+		wait(0.25)
+	end
+end
+
+-- Events --
+wait(1)
+Main()
